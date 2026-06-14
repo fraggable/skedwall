@@ -1,0 +1,61 @@
+{
+  "timezone": "Asia/Manila",
+  "days": [
+    {
+      "dateKey": "2026-06-14",
+      "label": "SUNDAY, JUN 14",
+      "events": []
+    },
+    {
+      "dateKey": "2026-06-15",
+      "label": "TOMORROW",
+      "events": [
+        {
+          "title": "Sprint Planning | PropertyGenius.ai",
+          "start": "10:30AM",
+          "end": "11:00AM",
+          "hasMeet": true
+        },
+        {
+          "title": "AAEP Batch 3 - Daily Check-In Meeting",
+          "start": "7:30PM",
+          "end": "8:00PM",
+          "hasMeet": true
+        },
+        {
+          "title": "Daily Stand-Up Strategy Session | PropertyGenius.ai",
+          "start": "9:30PM",
+          "end": "9:45PM",
+          "hasMeet": true
+        }
+      ]
+    },
+    {
+      "dateKey": "2026-06-16",
+      "label": "TUESDAY, JUN 16",
+      "events": [
+        {
+          "title": "PropertyGenius.ai Launch Readiness Review",
+          "start": "11:00AM",
+          "end": "11:30AM",
+          "hasMeet": true
+        },
+        {
+          "title": "Client Follow-Up",
+          "start": "1:00PM",
+          "end": "1:30PM",
+          "hasMeet": true
+        },
+        {
+          "title": "Launch QA",
+          "start": "4:00PM",
+          "end": "4:30PM",
+          "hasMeet": true
+        }
+      ]
+    }
+  ],
+  "baseWallpaperPath": "python-renderer/mock-wallpaper.jpg",
+  "width": 1290,
+  "height": 2796
+}

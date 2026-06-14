@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WallpaperMode {
+  LATEST_UPLOADED
+  SELECTED
+  RANDOM_DAILY
+}
+
+enum GeneratedImageStatus {
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+
+  accounts        Account[]
+  sessions        Session[]
+  settings        UserSettings?
+  wallpapers      Wallpaper[]
+  generatedImages GeneratedImage[]
+  dailySelections DailyWallpaperSelection[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Account {
+  id                String @id @default(cuid())
+  userId            String @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String @map("provider_account_id")
+
+  // TODO: encrypt refresh tokens before production hardening.
+  refresh_token String? @db.Text
+  access_token  String? @db.Text
+  expires_at    Int?
+  token_type    String?
+  scope         String?
+  id_token      String? @db.Text
+  session_state String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique @map("user_id")
+
+  timezone            String        @default("Asia/Manila")
+  maxEvents           Int           @default(6) @map("max_events")
+  wallpaperMode       WallpaperMode @default(LATEST_UPLOADED) @map("wallpaper_mode")
+  selectedWallpaperId String?       @map("selected_wallpaper_id")
+  generationEnabled   Boolean       @default(true) @map("generation_enabled")
+  wallpaperToken      String        @unique @default(uuid()) @map("wallpaper_token")
+
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedWallpaper Wallpaper? @relation("SelectedWallpaper", fields: [selectedWallpaperId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
+}
+
+model Wallpaper {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+
+  storagePath      String  @map("storage_path")
+  originalFilename String? @map("original_filename")
+  mimeType         String  @map("mime_type")
+  sizeBytes        Int     @map("size_bytes")
+  width            Int?
+  height           Int?
+  isEnabled        Boolean @default(true) @map("is_enabled")
+
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedImages    GeneratedImage[]
+  dailySelections    DailyWallpaperSelection[]
+  selectedBySettings UserSettings[]            @relation("SelectedWallpaper")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@map("wallpapers")
+}
+
+model GeneratedImage {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+
+  wallpaperId  String?              @map("wallpaper_id")
+  storagePath  String               @map("storage_path")
+  date         DateTime             @db.Date
+  status       GeneratedImageStatus @default(SUCCESS)
+  errorMessage String?              @map("error_message") @db.Text
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallpaper Wallpaper? @relation(fields: [wallpaperId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, date])
+  @@index([userId, createdAt])
+  @@map("generated_images")
+}
+
+model DailyWallpaperSelection {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  wallpaperId String   @map("wallpaper_id")
+  date        DateTime @db.Date
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallpaper Wallpaper @relation(fields: [wallpaperId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, date])
+  @@index([wallpaperId])
+  @@map("daily_wallpaper_selections")
+}

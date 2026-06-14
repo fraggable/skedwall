@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+﻿# skedwall
 
-## Getting Started
+A Next.js app that generates daily iPhone wallpapers with a sanitized Google Calendar agenda overlay.
 
-First, run the development server:
+## Local Development
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Install dependencies:
+
+```powershell
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run the development server:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```powershell
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open http://localhost:3000.
 
-## Learn More
+## Required Services
 
-To learn more about Next.js, take a look at the following resources:
+- Google OAuth web client with this redirect URI: `http://localhost:3000/api/auth/callback/google`
+- Google Calendar API enabled
+- Supabase Postgres database
+- Supabase Storage bucket named by `SUPABASE_STORAGE_BUCKET`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The storage bucket can be private. Server-side routes use `SUPABASE_SERVICE_ROLE_KEY` to upload and serve generated images.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Local Environment
 
-## Deploy on Vercel
+Copy `.env.example` to `.env` and fill in the values. Auth.js expects `AUTH_SECRET`; `BETTER_AUTH_SECRET` is not used by this app.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Python Renderer
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Install Pillow locally if you want manual generation from the dashboard:
+
+```powershell
+python -m pip install -r python-renderer/requirements.txt
+```
+
+Test the renderer:
+
+```powershell
+python python-renderer/render.py --input python-renderer/mock-input.json --output python-renderer/mock-output.jpg
+```
+
+## Daily Worker
+
+The GitHub Actions workflow in `.github/workflows/generate-wallpapers.yml` runs at 21:00 UTC, which is 5:00 AM Asia/Manila. It also supports manual `workflow_dispatch` runs.
+
+Required GitHub secrets:
+
+- `DATABASE_URL`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_STORAGE_BUCKET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+
+## Security Notes
+
+Do not commit `.env`. Google refresh tokens are stored in the Auth.js `accounts` table for now; encrypting them is marked as a hardening task before production use.
