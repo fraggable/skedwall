@@ -14,6 +14,9 @@ export type SanitizedCalendarDay = {
 };
 
 type GoogleCalendarItem = {
+  id?: string;
+  iCalUID?: string;
+  calendarId?: string;
   summary?: string;
   hangoutLink?: string;
   start?: { date?: string; dateTime?: string };
@@ -24,6 +27,13 @@ type GoogleCalendarItem = {
       uri?: string;
     }[];
   };
+};
+
+type GoogleCalendarListItem = {
+  id?: string;
+  primary?: boolean;
+  selected?: boolean;
+  accessRole?: string;
 };
 
 function getDateParts(date: Date, timeZone: string) {
@@ -265,6 +275,119 @@ async function getGoogleAccessToken(userId: string) {
   return refreshAccessToken(account.id, account.refresh_token);
 }
 
+function canReadCalendarEvents(calendar: GoogleCalendarListItem) {
+  return ["owner", "writer", "reader"].includes(calendar.accessRole ?? "");
+}
+
+function shouldUseCalendar(calendar: GoogleCalendarListItem) {
+  return Boolean(calendar.primary || calendar.selected);
+}
+
+async function fetchReadableCalendarIds(accessToken: string) {
+  const calendarIds: string[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL(
+      "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+    );
+
+    url.searchParams.set("maxResults", "250");
+    url.searchParams.set("minAccessRole", "reader");
+    url.searchParams.set(
+      "fields",
+      "nextPageToken,items(id,primary,selected,accessRole)",
+    );
+
+    if (pageToken) {
+      url.searchParams.set("pageToken", pageToken);
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        await getGoogleErrorMessage(response, "Google Calendar list failed"),
+      );
+    }
+
+    const payload = (await response.json()) as {
+      items?: GoogleCalendarListItem[];
+      nextPageToken?: string;
+    };
+
+    for (const calendar of payload.items ?? []) {
+      if (calendar.id && canReadCalendarEvents(calendar) && shouldUseCalendar(calendar)) {
+        calendarIds.push(calendar.id);
+      }
+    }
+
+    pageToken = payload.nextPageToken;
+  } while (pageToken);
+
+  return calendarIds.length > 0 ? calendarIds : ["primary"];
+}
+
+function eventStartSortValue(event: GoogleCalendarItem) {
+  const start = event.start?.dateTime ?? event.start?.date;
+
+  if (!start) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Date.parse(event.start?.dateTime ?? `${start}T00:00:00.000Z`);
+}
+
+async function fetchCalendarEvents(
+  accessToken: string,
+  calendarId: string,
+  start: Date,
+  end: Date,
+  maxEvents: number,
+) {
+  const url = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+      calendarId,
+    )}/events`,
+  );
+
+  url.searchParams.set("singleEvents", "true");
+  url.searchParams.set("orderBy", "startTime");
+  url.searchParams.set("timeMin", start.toISOString());
+  url.searchParams.set("timeMax", end.toISOString());
+  url.searchParams.set("maxResults", String(Math.max(maxEvents * 8, 30)));
+  url.searchParams.set(
+    "fields",
+    "items(id,iCalUID,summary,start,end,hangoutLink,conferenceData(entryPoints(entryPointType,uri)))",
+  );
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getGoogleErrorMessage(
+        response,
+        `Google Calendar request failed for ${calendarId}`,
+      ),
+    );
+  }
+
+  const payload = (await response.json()) as { items?: GoogleCalendarItem[] };
+
+  return (payload.items ?? []).map((event) => ({
+    ...event,
+    calendarId,
+  }));
+}
+
 export async function fetchCalendarDays(
   userId: string,
   timeZone: string,
@@ -283,41 +406,41 @@ export async function fetchCalendarDays(
     };
   });
   const dayByKey = new Map(days.map((day) => [day.dateKey, day]));
-  const url = new URL(
-    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+  const calendarIds = await fetchReadableCalendarIds(accessToken);
+  const eventGroups = await Promise.all(
+    calendarIds.map((calendarId) =>
+      fetchCalendarEvents(accessToken, calendarId, start, end, maxEvents),
+    ),
   );
-
-  url.searchParams.set("singleEvents", "true");
-  url.searchParams.set("orderBy", "startTime");
-  url.searchParams.set("timeMin", start.toISOString());
-  url.searchParams.set("timeMax", end.toISOString());
-  url.searchParams.set("maxResults", String(Math.max(maxEvents * 8, 30)));
-  url.searchParams.set(
-    "fields",
-    "items(summary,start,end,hangoutLink,conferenceData(entryPoints(entryPointType,uri)))",
-  );
-
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+  const seenEvents = new Set<string>();
+  const events = eventGroups.flat().sort((left, right) => {
+    return eventStartSortValue(left) - eventStartSortValue(right);
   });
 
-  if (!response.ok) {
-    throw new Error(
-      await getGoogleErrorMessage(response, "Google Calendar request failed"),
-    );
-  }
+  for (const event of events) {
+    const startDateTime = event.start?.dateTime;
+    const endDateTime = event.end?.dateTime;
+    const startDate = event.start?.date;
 
-  const payload = (await response.json()) as { items?: GoogleCalendarItem[] };
-
-  for (const event of payload.items ?? []) {
-    if (!event.start?.dateTime || !event.end?.dateTime) {
+    if (!startDateTime && !startDate) {
       continue;
     }
 
-    const dateKey = getTodayKey(timeZone, new Date(event.start.dateTime));
-    const day = dayByKey.get(dateKey);
+    const dedupeKey = [
+      event.iCalUID ?? event.id ?? event.summary ?? "event",
+      startDateTime ?? startDate,
+    ].join(":");
+
+    if (seenEvents.has(dedupeKey)) {
+      continue;
+    }
+
+    seenEvents.add(dedupeKey);
+
+    const dateKey = startDateTime
+      ? getTodayKey(timeZone, new Date(startDateTime))
+      : startDate;
+    const day = dateKey ? dayByKey.get(dateKey) : undefined;
 
     if (!day) {
       continue;
@@ -325,8 +448,8 @@ export async function fetchCalendarDays(
 
     day.events.push({
       title: event.summary?.trim() || "Busy",
-      start: formatEventTime(event.start.dateTime, timeZone),
-      end: formatEventTime(event.end.dateTime, timeZone),
+      start: startDateTime ? formatEventTime(startDateTime, timeZone) : "ALL DAY",
+      end: endDateTime ? formatEventTime(endDateTime, timeZone) : "",
       hasMeet: hasGoogleMeet(event),
     });
   }

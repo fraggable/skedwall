@@ -8,6 +8,7 @@ import tempfile
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -38,7 +39,10 @@ def storage_headers() -> dict[str, str]:
 
 
 def storage_url(path: str) -> str:
-    base_url = required_env("SUPABASE_URL").rstrip("/")
+    base_url = (
+        os.environ.get("SUPABASE_URL")
+        or required_env("NEXT_PUBLIC_SUPABASE_URL")
+    ).rstrip("/")
     bucket = required_env("SUPABASE_STORAGE_BUCKET")
     return f"{base_url}/storage/v1/object/{bucket}/{path}"
 
@@ -128,6 +132,87 @@ def has_google_meet(item: dict) -> bool:
     return False
 
 
+def can_read_calendar_events(calendar: dict) -> bool:
+    return calendar.get("accessRole") in {"owner", "writer", "reader"}
+
+
+def should_use_calendar(calendar: dict) -> bool:
+    return bool(calendar.get("primary") or calendar.get("selected"))
+
+
+def fetch_readable_calendar_ids(access_token: str) -> list[str]:
+    calendar_ids: list[str] = []
+    page_token: str | None = None
+
+    while True:
+        params = {
+            "maxResults": 250,
+            "minAccessRole": "reader",
+            "fields": "nextPageToken,items(id,primary,selected,accessRole)",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+
+        response = requests.get(
+            "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params=params,
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+        for calendar in payload.get("items", []):
+            calendar_id = calendar.get("id")
+            if calendar_id and can_read_calendar_events(calendar) and should_use_calendar(calendar):
+                calendar_ids.append(calendar_id)
+
+        page_token = payload.get("nextPageToken")
+        if not page_token:
+            break
+
+    return calendar_ids or ["primary"]
+
+
+def fetch_calendar_events(
+    access_token: str,
+    calendar_id: str,
+    start: datetime,
+    end: datetime,
+    max_events: int,
+) -> list[dict]:
+    response = requests.get(
+        f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar_id, safe='')}/events",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "timeMin": start.isoformat().replace("+00:00", "Z"),
+            "timeMax": end.isoformat().replace("+00:00", "Z"),
+            "maxResults": max(max_events * 8, 30),
+            "fields": "items(id,iCalUID,summary,start,end,hangoutLink,conferenceData(entryPoints(entryPointType,uri)))",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    return [dict(item, calendarId=calendar_id) for item in response.json().get("items", [])]
+
+
+def parse_event_start(item: dict, tz: ZoneInfo) -> datetime | None:
+    start = item.get("start") or {}
+    start_time = start.get("dateTime")
+    start_date = start.get("date")
+
+    if start_time:
+        return datetime.fromisoformat(start_time.replace("Z", "+00:00")).astimezone(tz)
+
+    if start_date:
+        return datetime.combine(date.fromisoformat(start_date), time.min, tzinfo=tz)
+
+    return None
+
+
 def fetch_calendar_days(access_token: str, tz_name: str, max_events: int, day_count: int = 3) -> list[dict]:
     tz = ZoneInfo(tz_name)
     today = datetime.now(tz).date()
@@ -142,40 +227,50 @@ def fetch_calendar_days(access_token: str, tz_name: str, max_events: int, day_co
         for offset in range(day_count)
     ]
     day_by_key = {day["dateKey"]: day for day in days}
-    response = requests.get(
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-        headers={"Authorization": f"Bearer {access_token}"},
-        params={
-            "singleEvents": "true",
-            "orderBy": "startTime",
-            "timeMin": start.isoformat().replace("+00:00", "Z"),
-            "timeMax": end.isoformat().replace("+00:00", "Z"),
-            "maxResults": max(max_events * 8, 30),
-            "fields": "items(summary,start,end,hangoutLink,conferenceData(entryPoints(entryPointType,uri)))",
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    for item in response.json().get("items", []):
-        start_time = item.get("start", {}).get("dateTime")
-        end_time = item.get("end", {}).get("dateTime")
-        if not start_time or not end_time:
+    events: list[dict] = []
+
+    for calendar_id in fetch_readable_calendar_ids(access_token):
+        events.extend(fetch_calendar_events(access_token, calendar_id, start, end, max_events))
+
+    seen_events: set[tuple[str, str]] = set()
+    events.sort(key=lambda item: parse_event_start(item, tz) or datetime.max.replace(tzinfo=tz))
+
+    for item in events:
+        start_dt = parse_event_start(item, tz)
+        if not start_dt:
             continue
-        start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00")).astimezone(tz)
-        end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00")).astimezone(tz)
+
+        start_payload = item.get("start") or {}
+        end_payload = item.get("end") or {}
+        start_time = start_payload.get("dateTime")
+        end_time = end_payload.get("dateTime")
+        dedupe_key = (
+            item.get("iCalUID") or item.get("id") or item.get("summary") or "event",
+            start_time or start_payload.get("date") or "",
+        )
+
+        if dedupe_key in seen_events:
+            continue
+
+        seen_events.add(dedupe_key)
         day = day_by_key.get(start_dt.date().isoformat())
         if not day:
             continue
+
+        end_dt = (
+            datetime.fromisoformat(end_time.replace("Z", "+00:00")).astimezone(tz)
+            if end_time
+            else None
+        )
         day["events"].append(
             {
                 "title": item.get("summary") or "Busy",
-                "start": format_event_time(start_dt),
-                "end": format_event_time(end_dt),
+                "start": format_event_time(start_dt) if start_time else "ALL DAY",
+                "end": format_event_time(end_dt) if end_dt else "",
                 "hasMeet": has_google_meet(item),
             }
         )
     return days
-
 
 def select_wallpaper(conn: psycopg.Connection, user: dict, today: date) -> dict:
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
