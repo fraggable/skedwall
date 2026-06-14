@@ -150,31 +150,6 @@ def choose_text_palette(glass_rgb: np.ndarray, alpha: np.ndarray, detail: float)
     }
 
 
-def with_alpha(
-    color: tuple[int, int, int, int],
-    alpha: int,
-) -> tuple[int, int, int, int]:
-    return (color[0], color[1], color[2], max(0, min(alpha, 255)))
-
-
-def contrast_shadow_for(
-    fill: tuple[int, int, int, int],
-) -> tuple[int, int, int, int]:
-    luminance = fill[0] * 0.2126 + fill[1] * 0.7152 + fill[2] * 0.0722
-    if luminance > 150:
-        return (0, 0, 0, 120)
-    return (255, 255, 255, 108)
-
-
-def lift_highlight_for(
-    fill: tuple[int, int, int, int],
-) -> tuple[int, int, int, int]:
-    luminance = fill[0] * 0.2126 + fill[1] * 0.7152 + fill[2] * 0.0722
-    if luminance > 150:
-        return (255, 255, 255, 58)
-    return (0, 0, 0, 48)
-
-
 def draw_text(
     draw: ImageDraw.ImageDraw,
     position: tuple[int, int],
@@ -184,17 +159,8 @@ def draw_text(
     shadow_fill: tuple[int, int, int, int],
 ) -> None:
     x, y = position
-    contrast = contrast_shadow_for(fill)
-    highlight = lift_highlight_for(fill)
-    ambient = with_alpha(contrast, 54)
-    contact = with_alpha(contrast, max(contrast[3], shadow_fill[3], 118))
-    rim = with_alpha(contrast, 78)
-
-    draw.text((x, y + 6), text, fill=ambient, font=font, stroke_width=3, stroke_fill=ambient)
-    draw.text((x, y + 3), text, fill=contact, font=font, stroke_width=2, stroke_fill=contact)
-    draw.text((x + 1, y + 1), text, fill=rim, font=font, stroke_width=1, stroke_fill=rim)
-    draw.text((x, y - 1), text, fill=highlight, font=font)
-    draw.text((x, y), text, fill=fill, font=font, stroke_width=1, stroke_fill=with_alpha(contrast, 64))
+    draw.text((x, y + 2), text, fill=shadow_fill, font=font)
+    draw.text((x, y), text, fill=fill, font=font)
 
 
 def draw_soft_shadow(
@@ -428,8 +394,8 @@ def draw_event_card(
     draw.rounded_rectangle(
         box,
         radius=15,
-        fill=(255, 255, 255, 46),
-        outline=(255, 255, 255, 38),
+        fill=(255, 255, 255, 26),
+        outline=(255, 255, 255, 24),
         width=1,
     )
     draw.rounded_rectangle((x0 + 16, y0 + 15, x0 + 25, y1 - 15), radius=4, fill=palette["primary"])
