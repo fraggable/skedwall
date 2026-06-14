@@ -401,18 +401,41 @@ def draw_event_card(
     draw.rounded_rectangle((x0 + 16, y0 + 15, x0 + 25, y1 - 15), radius=4, fill=palette["primary"])
 
     title_x = x0 + 40
-    time_x = x1 - 154
-    title_width = time_x - title_x - 20
+    start_text = str(event.get("start", ""))
+    end_text = str(event.get("end", ""))
+    time_right = x1 - 24
+    time_width = max(
+        text_width(draw, start_text, fonts["time"]),
+        text_width(draw, end_text, fonts["time"]) if end_text else 0,
+    )
+    time_left = time_right - time_width
+    title_width = max(80, time_left - title_x - 24)
     title = ellipsize_text(draw, str(event.get("title", "Busy")), fonts["event_title"], title_width)
     draw_text(draw, (title_x, y0 + 17), title, fonts["event_title"], palette["primary"], palette["shadow"])
 
     if event.get("hasMeet"):
         meet_y = y0 + 60
-        draw_meet_icon(draw, title_x + 2, meet_y - 3, palette["secondary"])
+        draw_meet_icon(draw, title_x + 2, meet_y + 1, palette["secondary"])
         draw_text(draw, (title_x + 54, meet_y - 2), "Meet", fonts["meta"], palette["secondary"], palette["shadow"])
 
-    draw_text(draw, (time_x, y0 + 18), str(event.get("start", "")), fonts["time"], palette["primary"], palette["shadow"])
-    draw_text(draw, (time_x, y0 + 59), str(event.get("end", "")), fonts["time"], palette["secondary"], palette["shadow"])
+    if start_text:
+        draw_text(
+            draw,
+            (time_right - text_width(draw, start_text, fonts["time"]), y0 + 18),
+            start_text,
+            fonts["time"],
+            palette["primary"],
+            palette["shadow"],
+        )
+    if end_text:
+        draw_text(
+            draw,
+            (time_right - text_width(draw, end_text, fonts["time"]), y0 + 59),
+            end_text,
+            fonts["time"],
+            palette["secondary"],
+            palette["shadow"],
+        )
 
 
 def draw_calendar_blocks(
