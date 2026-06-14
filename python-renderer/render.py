@@ -9,12 +9,13 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 
-def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     candidates = [
         "C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold else "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
     ]
 
     for candidate in candidates:
@@ -23,7 +24,9 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFo
         except OSError:
             continue
 
-    return ImageFont.load_default()
+    raise RuntimeError(
+        "No TrueType font found. Install fonts-dejavu-core or provide Segoe/Arial fonts."
+    )
 
 
 def cover_resize(image: Image.Image, width: int, height: int) -> Image.Image:

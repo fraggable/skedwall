@@ -4,7 +4,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
+  && apt-get install -y --no-install-recommends ca-certificates fonts-dejavu-core python3 python3-venv \
   && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
