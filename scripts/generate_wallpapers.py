@@ -213,15 +213,21 @@ def parse_event_start(item: dict, tz: ZoneInfo) -> datetime | None:
     return None
 
 
-def fetch_calendar_days(access_token: str, tz_name: str, max_events: int, day_count: int = 3) -> list[dict]:
+def fetch_calendar_days(
+    access_token: str,
+    tz_name: str,
+    max_events: int,
+    day_count: int = 3,
+    start_date: date | None = None,
+) -> list[dict]:
     tz = ZoneInfo(tz_name)
-    today = datetime.now(tz).date()
-    start = datetime.combine(today, time.min, tzinfo=tz).astimezone(timezone.utc)
-    end = datetime.combine(today + timedelta(days=day_count), time.min, tzinfo=tz).astimezone(timezone.utc)
+    start_day = start_date or datetime.now(tz).date()
+    start = datetime.combine(start_day, time.min, tzinfo=tz).astimezone(timezone.utc)
+    end = datetime.combine(start_day + timedelta(days=day_count), time.min, tzinfo=tz).astimezone(timezone.utc)
     days = [
         {
-            "dateKey": (today + timedelta(days=offset)).isoformat(),
-            "label": format_day_label(today + timedelta(days=offset), offset),
+            "dateKey": (start_day + timedelta(days=offset)).isoformat(),
+            "label": format_day_label(start_day + timedelta(days=offset), offset),
             "events": [],
         }
         for offset in range(day_count)
@@ -272,7 +278,7 @@ def fetch_calendar_days(access_token: str, tz_name: str, max_events: int, day_co
         )
     return days
 
-def select_wallpaper(conn: psycopg.Connection, user: dict, today: date) -> dict:
+def select_wallpaper(conn: psycopg.Connection, user: dict, target_date: date) -> dict:
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         cur.execute(
             """
@@ -301,7 +307,7 @@ def select_wallpaper(conn: psycopg.Connection, user: dict, today: date) -> dict:
                 join wallpapers w on w.id = d.wallpaper_id
                 where d.user_id = %s and d.date = %s and w.is_enabled = true
                 """,
-                (user["user_id"], today),
+                (user["user_id"], target_date),
             )
             existing = cur.fetchone()
         if existing:
@@ -314,7 +320,7 @@ def select_wallpaper(conn: psycopg.Connection, user: dict, today: date) -> dict:
                 values (%s, %s, %s, %s)
                 on conflict (user_id, date) do update set wallpaper_id = excluded.wallpaper_id
                 """,
-                (str(uuid.uuid4()), user["user_id"], wallpaper["id"], today),
+                (str(uuid.uuid4()), user["user_id"], wallpaper["id"], target_date),
             )
         conn.commit()
         return wallpaper
@@ -322,26 +328,49 @@ def select_wallpaper(conn: psycopg.Connection, user: dict, today: date) -> dict:
     return wallpapers[0]
 
 
-def record_generated(conn: psycopg.Connection, user_id: str, wallpaper_id: str | None, storage_path: str, today: date, status: str, error: str | None = None) -> None:
+def record_generated(conn: psycopg.Connection, user_id: str, wallpaper_id: str | None, storage_path: str, target_date: date, status: str, error: str | None = None) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
             insert into generated_images (id, user_id, wallpaper_id, storage_path, date, status, error_message)
             values (%s, %s, %s, %s, %s, %s, %s)
             """,
-            (str(uuid.uuid4()), user_id, wallpaper_id, storage_path, today, status, error),
+            (str(uuid.uuid4()), user_id, wallpaper_id, storage_path, target_date, status, error),
         )
     conn.commit()
 
 
-def generate_for_user(conn: psycopg.Connection, user: dict) -> None:
-    tz = ZoneInfo(user["timezone"])
-    today = datetime.now(tz).date()
+def get_due_target_date(user: dict, now_utc: datetime) -> date | None:
+    local_now = now_utc.astimezone(ZoneInfo(user["timezone"]))
+    if local_now.hour == 23 and local_now.minute >= 55:
+        return local_now.date() + timedelta(days=1)
+    return None
+
+
+def has_successful_generation(conn: psycopg.Connection, user_id: str, target_date: date) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            select 1 from generated_images
+            where user_id = %s and date = %s and status = 'SUCCESS'
+            limit 1
+            """,
+            (user_id, target_date),
+        )
+        return cur.fetchone() is not None
+
+
+def generate_for_user(conn: psycopg.Connection, user: dict, target_date: date) -> None:
     wallpaper_id = None
     try:
         access_token = get_access_token(conn, user)
-        days = fetch_calendar_days(access_token, user["timezone"], user["max_events"])
-        wallpaper = select_wallpaper(conn, user, today)
+        days = fetch_calendar_days(
+            access_token,
+            user["timezone"],
+            user["max_events"],
+            start_date=target_date,
+        )
+        wallpaper = select_wallpaper(conn, user, target_date)
         wallpaper_id = wallpaper["id"]
         generated_path = f"users/{user['user_id']}/generated/today.jpg"
 
@@ -362,14 +391,16 @@ def generate_for_user(conn: psycopg.Connection, user: dict) -> None:
             )
             upload_storage(generated_path, output_path)
 
-        record_generated(conn, user["user_id"], wallpaper_id, generated_path, today, "SUCCESS")
-        print(f"generated wallpaper for {user['email']}")
+        record_generated(conn, user["user_id"], wallpaper_id, generated_path, target_date, "SUCCESS")
+        print(f"generated wallpaper for {user['email']} targeting {target_date.isoformat()}")
     except Exception as exc:
-        record_generated(conn, user["user_id"], wallpaper_id, "", today, "FAILED", str(exc))
-        print(f"failed for {user['email']}: {exc}")
+        record_generated(conn, user["user_id"], wallpaper_id, "", target_date, "FAILED", str(exc))
+        print(f"failed for {user['email']} targeting {target_date.isoformat()}: {exc}")
 
 
 def main() -> None:
+    now_utc = datetime.now(timezone.utc)
+
     with psycopg.connect(required_env("DATABASE_URL")) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
@@ -394,13 +425,39 @@ def main() -> None:
             )
             users = cur.fetchall()
 
+        due_count = 0
+        generated_count = 0
+        skipped_existing_count = 0
+
         for user in users:
+            try:
+                target_date = get_due_target_date(user, now_utc)
+            except Exception as exc:
+                print(f"skipping {user['email']}: invalid timezone {user['timezone']}: {exc}")
+                continue
+
+            if not target_date:
+                continue
+
+            due_count += 1
             granted_scopes = set((user.get("scope") or "").split())
             if not granted_scopes.intersection(CALENDAR_SCOPES):
                 print(f"skipping {user['email']}: calendar scope missing")
                 continue
-            generate_for_user(conn, user)
 
+            if has_successful_generation(conn, user["user_id"], target_date):
+                skipped_existing_count += 1
+                print(f"skipping {user['email']}: {target_date.isoformat()} already generated")
+                continue
+
+            generate_for_user(conn, user, target_date)
+            generated_count += 1
+
+        print(
+            "checked "
+            f"{len(users)} users; due={due_count}; "
+            f"generated={generated_count}; already_generated={skipped_existing_count}"
+        )
 
 if __name__ == "__main__":
     main()
