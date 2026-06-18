@@ -20,17 +20,23 @@ function getFileExtension(storagePath: string) {
   return extension || ".jpg";
 }
 
-function runRenderer(inputPath: string, outputPath: string) {
+function runRenderer(inputPath: string, outputPath: string, clean = false) {
   return new Promise<void>((resolve, reject) => {
     const python = process.env.PYTHON_BIN ?? "python";
     const rendererPath = path.join(/*turbopackIgnore: true*/ process.cwd(), "python-renderer", "render.py");
-    const child = spawn(python, [
+    const args = [
       rendererPath,
       "--input",
       inputPath,
       "--output",
       outputPath,
-    ]);
+    ];
+
+    if (clean) {
+      args.push("--clean");
+    }
+
+    const child = spawn(python, args);
 
     let stderr = "";
 
@@ -156,6 +162,7 @@ export async function generateWallpaperForUser(userId: string) {
     );
     const inputPath = path.join(tempRoot, "input.json");
     const outputPath = path.join(tempRoot, "today.jpg");
+    const cleanOutputPath = path.join(tempRoot, "home.jpg");
     const { data: baseImage, error: downloadError } = await supabase.storage
       .from(bucket)
       .download(wallpaper.storagePath);
@@ -188,9 +195,12 @@ export async function generateWallpaperForUser(userId: string) {
     );
 
     await runRenderer(inputPath, outputPath);
+    await runRenderer(inputPath, cleanOutputPath, true);
 
     const outputBuffer = await readFile(outputPath);
+    const cleanOutputBuffer = await readFile(cleanOutputPath);
     const generatedPath = `users/${user.id}/generated/today.jpg`;
+    const homePath = `users/${user.id}/generated/home.jpg`;
     const { error: uploadError } = await supabase.storage
       .from(bucket)
       .upload(generatedPath, outputBuffer, {
@@ -200,6 +210,17 @@ export async function generateWallpaperForUser(userId: string) {
 
     if (uploadError) {
       throw new Error(uploadError.message);
+    }
+
+    const { error: homeUploadError } = await supabase.storage
+      .from(bucket)
+      .upload(homePath, cleanOutputBuffer, {
+        contentType: "image/jpeg",
+        upsert: true,
+      });
+
+    if (homeUploadError) {
+      throw new Error(homeUploadError.message);
     }
 
     const image = await prisma.generatedImage.create({

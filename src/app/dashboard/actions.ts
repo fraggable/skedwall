@@ -239,7 +239,7 @@ export async function generateTodayWallpaper(
 
     await generateWallpaperForUser(user.id);
     revalidatePath("/dashboard");
-    return { success: "Wallpaper generated." };
+    return { success: "Wallpapers generated." };
   } catch (error) {
     revalidatePath("/dashboard");
     return {

@@ -524,16 +524,39 @@ def render_wallpaper(payload: dict[str, Any], output_path: Path) -> None:
     composed.save(output_path, "JPEG", quality=92, optimize=True)
 
 
+def render_clean_wallpaper(payload: dict[str, Any], output_path: Path) -> None:
+    width = int(payload.get("width", 1290))
+    height = int(payload.get("height", 2796))
+    base_path = Path(payload["baseWallpaperPath"])
+
+    if base_path.exists():
+        image = Image.open(base_path).convert("RGB")
+        canvas = cover_resize(image, width, height)
+    else:
+        canvas = Image.new("RGB", (width, height), (150, 150, 156))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(output_path, "JPEG", quality=92, optimize=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Render only the normalized base wallpaper without schedule overlay.",
+    )
     args = parser.parse_args()
 
     with open(args.input, "r", encoding="utf-8-sig") as file:
         payload = json.load(file)
 
-    render_wallpaper(payload, Path(args.output))
+    if args.clean:
+        render_clean_wallpaper(payload, Path(args.output))
+    else:
+        render_wallpaper(payload, Path(args.output))
 
 
 if __name__ == "__main__":

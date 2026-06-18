@@ -15,7 +15,7 @@ import psycopg
 import requests
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "python-renderer"))
-from render import render_wallpaper  # noqa: E402
+from render import render_clean_wallpaper, render_wallpaper  # noqa: E402
 
 CALENDAR_SCOPES = {
     "https://www.googleapis.com/auth/calendar.readonly",
@@ -373,23 +373,25 @@ def generate_for_user(conn: psycopg.Connection, user: dict, target_date: date) -
         wallpaper = select_wallpaper(conn, user, target_date)
         wallpaper_id = wallpaper["id"]
         generated_path = f"users/{user['user_id']}/generated/today.jpg"
+        home_path = f"users/{user['user_id']}/generated/home.jpg"
 
         with tempfile.TemporaryDirectory(prefix="skedwall-") as tmp:
             root = Path(tmp)
             base_path = root / f"base{Path(wallpaper['storage_path']).suffix or '.jpg'}"
             output_path = root / "today.jpg"
+            clean_output_path = root / "home.jpg"
             download_storage(wallpaper["storage_path"], base_path)
-            render_wallpaper(
-                {
-                    "timezone": user["timezone"],
-                    "days": days,
-                    "baseWallpaperPath": str(base_path),
-                    "width": 1290,
-                    "height": 2796,
-                },
-                output_path,
-            )
+            payload = {
+                "timezone": user["timezone"],
+                "days": days,
+                "baseWallpaperPath": str(base_path),
+                "width": 1290,
+                "height": 2796,
+            }
+            render_wallpaper(payload, output_path)
+            render_clean_wallpaper(payload, clean_output_path)
             upload_storage(generated_path, output_path)
+            upload_storage(home_path, clean_output_path)
 
         record_generated(conn, user["user_id"], wallpaper_id, generated_path, target_date, "SUCCESS")
         print(f"generated wallpaper for {user['email']} targeting {target_date.isoformat()}")

@@ -87,7 +87,8 @@ export default async function DashboardPage() {
     (account) => account.provider === "google",
   );
   const hasCalendarAccess = hasGoogleCalendarScope(googleAccount?.scope);
-  const wallpaperUrl = `${getBaseUrl()}/w/${settings.wallpaperToken}/today.jpg`;
+  const lockScreenUrl = `${getBaseUrl()}/w/${settings.wallpaperToken}/today.jpg`;
+  const homeScreenUrl = `${getBaseUrl()}/w/${settings.wallpaperToken}/home.jpg`;
   const enabledWallpapers = user.wallpapers.filter(
     (wallpaper) => wallpaper.isEnabled,
   );
@@ -219,13 +220,36 @@ export default async function DashboardPage() {
 
           <div className="grid gap-5">
             <div className={panelClass}>
-              <h2 className="text-lg font-semibold">shortcut url</h2>
-              <p className="mt-4 break-all rounded-md border bg-muted p-3 text-sm leading-relaxed">
-                {wallpaperUrl}
-              </p>
-              <div className="mt-4 grid gap-2 sm:grid-cols-[auto_auto_1fr] sm:items-center">
-                <CopyButton value={wallpaperUrl} label="copy url" />
-                <ShortcutInstructions wallpaperUrl={wallpaperUrl} />
+              <h2 className="text-lg font-semibold">shortcut image urls</h2>
+              <div className="mt-4 grid gap-3">
+                <div className="grid gap-2 rounded-md border bg-muted p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    lock screen rendered image
+                  </p>
+                  <p className="break-all text-sm leading-relaxed">{lockScreenUrl}</p>
+                  <CopyButton
+                    value={lockScreenUrl}
+                    label="copy lock url"
+                    className="w-full bg-background sm:w-fit"
+                  />
+                </div>
+                <div className="grid gap-2 rounded-md border bg-muted p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    home screen clean image
+                  </p>
+                  <p className="break-all text-sm leading-relaxed">{homeScreenUrl}</p>
+                  <CopyButton
+                    value={homeScreenUrl}
+                    label="copy home url"
+                    className="w-full bg-background sm:w-fit"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-[auto_1fr] sm:items-center">
+                <ShortcutInstructions
+                  lockScreenUrl={lockScreenUrl}
+                  homeScreenUrl={homeScreenUrl}
+                />
                 <form action={regenerateWallpaperToken} className="sm:justify-self-end">
                   <button
                     type="submit"

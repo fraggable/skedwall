@@ -20,7 +20,7 @@ export function GenerateWallpaperForm({ disabled }: GenerateWallpaperFormProps) 
         disabled={disabled || isPending}
       >
         <WandSparkles className="size-4" aria-hidden="true" />
-        <span>{isPending ? "generating..." : "generate today.jpg"}</span>
+        <span>{isPending ? "generating..." : "generate wallpapers"}</span>
       </button>
       {state.error ? (
         <p className="max-w-md text-sm text-destructive">{state.error}</p>

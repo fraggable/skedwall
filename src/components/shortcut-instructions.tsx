@@ -1,9 +1,17 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useId, useState } from "react";
 import { Copy, X } from "lucide-react";
 
-export function ShortcutInstructions({ wallpaperUrl }: { wallpaperUrl: string }) {
+type ShortcutInstructionsProps = {
+  lockScreenUrl: string;
+  homeScreenUrl: string;
+};
+
+export function ShortcutInstructions({
+  lockScreenUrl,
+  homeScreenUrl,
+}: ShortcutInstructionsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
@@ -23,8 +31,8 @@ export function ShortcutInstructions({ wallpaperUrl }: { wallpaperUrl: string })
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isOpen]);
 
-  async function copyUrl() {
-    await navigator.clipboard.writeText(wallpaperUrl);
+  async function copyUrl(value: string) {
+    await navigator.clipboard.writeText(value);
   }
 
   return (
@@ -71,27 +79,46 @@ export function ShortcutInstructions({ wallpaperUrl }: { wallpaperUrl: string })
                 <ol className="mt-3 grid list-decimal gap-2 pl-5">
                   <li>Open the Shortcuts app on your iPhone.</li>
                   <li>Create a new shortcut.</li>
-                  <li>Add the action named Get Contents of URL.</li>
-                  <li>Paste your skedwall URL into the URL field.</li>
-                  <li>Add the action named Set Wallpaper.</li>
-                  <li>Set it to Lock Screen, Home Screen, or Both.</li>
-                  <li>Turn off Ask Before Running if iOS offers that option.</li>
-                  <li>Run the shortcut once manually to confirm it works.</li>
+                  <li>Add Get Contents of URL and paste the lock screen URL.</li>
+                  <li>Add Set Wallpaper and set it to Lock Screen only.</li>
+                  <li>Add Get Contents of URL again and paste the home screen URL.</li>
+                  <li>Add Set Wallpaper again and set it to Home Screen only.</li>
+                  <li>Turn off Show Preview and Ask Before Running where iOS offers those options.</li>
+                  <li>Run the shortcut once manually to confirm both wallpapers update correctly.</li>
                 </ol>
               </section>
 
               <section>
-                <h3 className="font-semibold">URL</h3>
-                <div className="mt-3 grid gap-3 rounded-md border bg-muted p-3">
-                  <p className="break-all font-mono text-xs">{wallpaperUrl}</p>
-                  <button
-                    type="button"
-                    onClick={copyUrl}
-                    className="flex w-fit items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm font-medium"
-                  >
-                    <Copy className="h-4 w-4" aria-hidden="true" />
-                    copy url
-                  </button>
+                <h3 className="font-semibold">URLs</h3>
+                <div className="mt-3 grid gap-3">
+                  <div className="grid gap-3 rounded-md border bg-muted p-3">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">
+                      lock screen rendered image
+                    </p>
+                    <p className="break-all font-mono text-xs">{lockScreenUrl}</p>
+                    <button
+                      type="button"
+                      onClick={() => copyUrl(lockScreenUrl)}
+                      className="flex w-fit items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm font-medium"
+                    >
+                      <Copy className="h-4 w-4" aria-hidden="true" />
+                      copy lock url
+                    </button>
+                  </div>
+                  <div className="grid gap-3 rounded-md border bg-muted p-3">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">
+                      home screen clean image
+                    </p>
+                    <p className="break-all font-mono text-xs">{homeScreenUrl}</p>
+                    <button
+                      type="button"
+                      onClick={() => copyUrl(homeScreenUrl)}
+                      className="flex w-fit items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm font-medium"
+                    >
+                      <Copy className="h-4 w-4" aria-hidden="true" />
+                      copy home url
+                    </button>
+                  </div>
                 </div>
               </section>
 
@@ -101,15 +128,15 @@ export function ShortcutInstructions({ wallpaperUrl }: { wallpaperUrl: string })
                   <li>In Shortcuts, open the Automation tab.</li>
                   <li>Create a new personal automation.</li>
                   <li>Choose Time of Day.</li>
-                  <li>Set it to run daily after backend generation, for example 6:00 AM.</li>
+                  <li>Set it to run daily after backend generation, such as 12:05 AM or your wake-up time.</li>
                   <li>Select Run Shortcut and choose the shortcut you created.</li>
                   <li>Disable confirmation prompts where iOS allows it.</li>
                 </ol>
               </section>
 
               <section className="rounded-md border p-3 text-muted-foreground">
-                Backend generation is scheduled for 5:00 AM Asia/Manila. Set the
-                iOS automation later than that so the newest generated image is ready.
+                Backend generation runs near 11:58 PM in your configured timezone.
+                Set the iOS automation later than that so the newest generated images are ready.
               </section>
             </div>
           </div>
