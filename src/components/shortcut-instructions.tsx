@@ -135,7 +135,7 @@ export function ShortcutInstructions({
               </section>
 
               <section className="rounded-md border p-3 text-muted-foreground">
-                Backend generation runs near 11:58 PM in your configured timezone.
+                Backend generation runs shortly after 12:00 AM in your configured timezone.
                 Set the iOS automation later than that so the newest generated images are ready.
               </section>
             </div>

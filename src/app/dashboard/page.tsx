@@ -32,6 +32,69 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function getTimezoneOffsetMinutes(timeZone: string, date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const localAsUtc = Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour,
+    values.minute,
+    values.second,
+  );
+
+  return Math.round((localAsUtc - date.getTime()) / 60000);
+}
+
+function formatGmtOffset(offsetMinutes: number) {
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = Math.floor(absolute / 60);
+  const minutes = absolute % 60;
+
+  return `GMT${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function getTimezoneOptions(selectedTimezone: string) {
+  const supportedTimezones =
+    typeof Intl.supportedValuesOf === "function"
+      ? Intl.supportedValuesOf("timeZone")
+      : ["Asia/Manila", "UTC"];
+  const timezones = new Set([...supportedTimezones, selectedTimezone]);
+
+  return Array.from(timezones)
+    .map((timeZone) => {
+      const offsetMinutes = getTimezoneOffsetMinutes(timeZone);
+
+      return {
+        timeZone,
+        offsetMinutes,
+        label: `${timeZone.replaceAll("_", " ")} (${formatGmtOffset(offsetMinutes)})`,
+      };
+    })
+    .sort((left, right) => {
+      if (left.offsetMinutes !== right.offsetMinutes) {
+        return left.offsetMinutes - right.offsetMinutes;
+      }
+
+      return left.timeZone.localeCompare(right.timeZone);
+    });
+}
+
 const fieldClass =
   "rounded-md border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring";
 const panelClass = "rounded-lg border bg-card p-4 shadow-sm sm:p-5";
@@ -105,6 +168,7 @@ export default async function DashboardPage() {
     }),
   );
   const previewByWallpaperId = new Map(previewEntries);
+  const timezoneOptions = getTimezoneOptions(settings.timezone);
 
   return (
     <main className="min-h-screen bg-muted/30 px-3 py-4 text-foreground sm:px-6 sm:py-6 lg:px-8">
@@ -152,11 +216,17 @@ export default async function DashboardPage() {
             <div className="mt-5 grid gap-4">
               <label className="grid gap-2 text-sm">
                 <span className="font-medium">timezone</span>
-                <input
+                <select
                   name="timezone"
                   defaultValue={settings.timezone}
                   className={fieldClass}
-                />
+                >
+                  {timezoneOptions.map((option) => (
+                    <option key={option.timeZone} value={option.timeZone}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-2 text-sm">

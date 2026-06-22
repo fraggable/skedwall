@@ -342,8 +342,8 @@ def record_generated(conn: psycopg.Connection, user_id: str, wallpaper_id: str |
 
 def get_due_target_date(user: dict, now_utc: datetime) -> date | None:
     local_now = now_utc.astimezone(ZoneInfo(user["timezone"]))
-    if local_now.hour == 23 and local_now.minute >= 55:
-        return local_now.date() + timedelta(days=1)
+    if local_now.hour == 0:
+        return local_now.date()
     return None
 
 
